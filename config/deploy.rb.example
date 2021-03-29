@@ -1,0 +1,106 @@
+# -*- encoding : utf-8 -*-
+
+puts "== 记得使用　　bundle exec cap deploy 来运行本命令"
+
+test_server_port = '22'
+test_server_ip = '47.56.117.246'
+test_server_username = 'root'
+
+# 要求测试服务器和生产服务器的路径是一样的.
+app_name = 'official-website'
+deploy_to = '/opt/app/official-website'
+
+require 'capistrano-rbenv'
+load 'deploy/assets'
+
+set :rake, "bundle exec rake"
+set :application, app_name
+set :repository, "./dist"
+set :scm, :none
+set :deploy_via, :copy
+
+
+set(:server_type) {
+  puts "== 咱们的服务器可以根据 测试环境(test) 和生产环境(production)分别做部署。"
+  Capistrano::CLI.ui.ask("== 希望部署哪个？? 输入： (test/production)? ")
+}
+
+case server_type.chomp
+when 'test'
+  puts "== 好的，主人，现在部署测试环境"
+  sleep 2
+  username = test_server_username
+  server_port = test_server_port
+  server_ip = test_server_ip
+when 'production'
+  puts "== 好的，主人，现在部署生产环境 (记得要确认过眼神...)"
+  set(:is_confirm_to_deploy_to_production) {
+    Capistrano::CLI.ui.ask("== 确认要部署吗？ (yes/no) ")
+  }
+
+  if is_confirm_to_deploy_to_production == 'yes'
+    sleep 2
+    username = production_server_username
+    server_port = production_server_port
+    server_ip = production_server_ip
+  else
+    puts "== 重新来过吧！"
+    exit 0
+  end
+
+else
+  puts "小哥哥，没有这个选项啊：#{server_type.chomp}. 重来吧．"
+  exit 0
+end
+
+# 设置好各种参数
+set :user, username
+ssh_options[:port] = server_port
+server = server_ip
+set :deploy_to, deploy_to
+
+role :web, server
+role :app, server
+role :db,  server, :primary => true
+role :db,  server
+
+set :copy_exclude, [".git", "node_modules", "src"]
+default_run_options[:pty] = true
+
+namespace :deploy do
+
+  task :restart, :roles => :app, :except => { :no_release => true } do
+    run "sudo nginx -s reload"
+  end
+
+  namespace :assets do
+    task :precompile do
+      puts "== 这个命令没有用，但是rails中每次都会执行，所以使用空语句覆盖它。"
+      #run "bundle install"
+      #run "cd #{release_path} && bundle exec rake RAILS_ENV=production RAILS_GROUPS=assets assets:precompile "
+    end
+    task :symlink do
+      puts "== 这个命令没有用，但是rails中每次都会执行，所以使用空语句覆盖它。"
+    end
+  end
+end
+
+desc "编译vuejs"
+task :build_vue do
+  puts "== 当前运行环境: #{server_type.chomp} =="
+  puts `mv src/request_url.js ./tmp_request_url.js`
+  puts `cp config/request_url.js.#{server_type.chomp} src/request_url.js`
+  puts '== 清空 dist 文件夹'
+  puts `rm -rf dist/*`
+  puts "== 编译 vuejs:"
+  puts `npm run build`
+  puts `mv ./tmp_request_url.js src/request_url.js`
+end
+
+task :remove_redundant_files do
+  puts "== 删掉远程无用的文件夹： log, public, tmp"
+  run "cd #{release_path}"
+end
+
+before "deploy", :build_vue
+after "deploy", :remove_redundant_files

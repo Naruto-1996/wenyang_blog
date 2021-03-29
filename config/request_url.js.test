@@ -1,0 +1,4 @@
+module.exports = {
+  cdn_url: 'showmethemoney.yijiayinshi.com',
+  api_url: 'http://api.wzjhn.com/api/v2'
+}
